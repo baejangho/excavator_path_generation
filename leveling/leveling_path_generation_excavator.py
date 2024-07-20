@@ -4,27 +4,22 @@ import threading
 import json
 import time
 
-import cmd_util  #건품연에서 보내주는 데이터를 받음  굴착영역이랑, 상차위치, 어떤 작업을 할 것인지 
-### TCP/IP ###
+## 건품연에서 보내주는 프로토콜을 경로생성을 위한 값으로 변환해주는 모듈
+import cmd_util   
 
-### UI 관련 ###
-import tkinter as tk
-from tkinter import ttk
-### UI 관련 ###
-
-### 경로데이터 저장관련 ###
+## 경로데이터 저장관련 ###
 import pandas as pd
 from collections import deque   #데이터 push/pop 연산 및 큐 라이브러리 
-### 경로데이터 저장관련 ###
 
-### 시뮬레이션 관련 : 건품연 명령 예시 ###
-import virtual_cmd    #가상 시뮬레이션 구동 시, 건품연에서 TCP/IP로 보내주는 데이터 관련 함수 
+## 건품연 명령 예시 ###
+import virtual_cmd     
 
-
-from inversekinematics_rc_real import * #역기구학, 정기구학 푸는 함수 (RC, 실제굴착기 기준으로 한 코든)
+## 굴착기 역기구학, 정기구학 푸는 함수
+from inversekinematics_rc_real import * 
 from math import *
 import numpy as np
 
+## 다양한 경로를 생성하기 위한 모듈
 import PathGenerationRule as PG
                
 class LEVELING():
@@ -60,27 +55,32 @@ class LEVELING():
 
     def path_generation_leveling(self, cond):
         
-        print("PATH generator start!")
-        ################## 평탄화(법면) 작업 단계(exc_phase : 1 - 8단계로 가정)  ###############################
-        # 0단계 : 현재 자세에서 대기 자세로 버켓 이동               (대기 자세 이동 작업 : 처음에만 시행)
-        # 1단계 : 대기 자세에서 평탄화(법면) 작업 위치로 스윙 이동  (평탄화(법면) 작업 시작을 위한 스윙 작업)
-        # 2단계 : 대기(현재) 자세에서 평탄화 초기 위치로 버켓 이동  (평탄화 초기 위치 이동 작업)
-        # 3단계 : 평탄화 초기 위치에서 평탄화 종료 위치로 버켓 이동 (평탄화 작업)
-        # 4단계 : 평탄화 종료 위치에서 스윙(상차) 자세로 버켓 이동  (스윙(상차) 자세 이동 작업)
+        #############  평탄화(법면) 작업 단계(exc_phase : 1 - 8단계로 가정)  #######################
+        # 0단계 : 현재 자세에서 대기 자세로 버켓 이동              (대기 자세 이동 작업 : 처음에만 시행)
+        # 1단계 : 대기 자세에서 평탄화(법면) 작업 위치로 스윙 이동    (평탄화(법면) 작업 시작을 위한 스윙 작업)
+        # 2단계 : 대기(현재) 자세에서 평탄화 초기 위치로 버켓 이동    (평탄화(법면) 초기 위치 이동 작업)
+        # 3단계 : 평탄화 초기 위치에서 평탄화 종료 위치로 버켓 이동    (평탄화(법면) 작업)
+        # 4단계 : 평탄화 종료 위치에서 스윙(상차) 자세로 버켓 이동    (스윙(상차) 자세 이동 작업)
         
         ## 상차가 있는 경우 5-8단계 포함 ##
         # 5단계 : 스윙(상차) 자세에서 상차를 위해 스윙              (상차를 위한 스윙 작업)
-        # 6단계 : 스윙 후 상차 위치로 버켓 이동                     (상차 위치 이동 작업)
+        # 6단계 : 스윙 후 상차 위치로 버켓 이동                   (상차 위치 이동 작업)
         # 7단계 : 토사를 버리기 위한 버켓 이동                      (상차 작업)
-        # 8단계 : 상차 후 스윙(상차) 자세로 버켓 이동               (스윙(상차) 자세 이동 작업)
+        # 8단계 : 상차 후 스윙(복귀) 자세로 버켓 이동               (스윙(상차) 자세 이동 작업)
         
         # 9단계 : 다음 평탄화 작업을 위한 스윙 위치로 스윙          (다음 unit work 또는 종료를 위한 스윙 작업)
         # 10단계 : 종료 시 초기 대기 자세로 버켓 이동               (초기 대기 자세 이동 작업 : 종료 시에만 시행)
-        #########################################################################################################
+        ######################################################################################
+        ### 아래 자세에 대한 정의가 필요함 ###
+        # 1. 대기 자세 : 대기 자세로 이동하는 자세
+        # 2. 스윙(상차) 자세 : 상차를 위한 스윙 전, 버켓 자세(토사를 가지고 있을 때)
+        # 3. 스윙(복귀) 자세 : 복귀를 위한 스윙 전, 버켓 자세
+        
+        print("PATH generator start!")
         
         # 평탄화 작업 phase에 따른 작업 순서 리스트
         exc_phase_list = ["0","1","2","3","4","5","6","7","8","9","10","11"]
-        # 상차가 없는 경우 
+        # 상차가 없는 경우는 아래 리스트 사용 
         # exc_phase_list = ["0","1","2","3","4","9","10"]
         cur_exc_phase = ""
         cur_exc_phase = "0"
@@ -93,7 +93,7 @@ class LEVELING():
         location = EXC_CMD["location"]
         # unit(sector) work 개수 저장
         num_UnitWork = len(location)
-        ###################################################################
+
 
         # 작업명령 저장(이전 TCP/IP 통신으로 받은 프로토콜로 명령 저장)
         EXC_CMD = self.work_input()            
@@ -127,7 +127,6 @@ class LEVELING():
         
         ######################### 스윙파라미터 #########################
         swing_num = num_UnitWork
-        ######################### 스윙파라미터 ########################
         
         ############ 부채꼴 깊이에 따른 로컬 굴착 횟수 정하는 알고리즘 #############
         # num_iteration_list = []
@@ -139,30 +138,50 @@ class LEVELING():
         #     num_iteration_list.append(num_iteration)
         #     #num_iteration = 4
         # print("num interation list:",num_iteration_list) 
-        # ######################## 횟수 정하는 알고리즘 ##################
         
-        # 실행되는 순간의 굴착기 현재 조인트 각도 저장
+        ## 실행되는 순간의 굴착기 현재 조인트 각도 저장
         cur_joint_angle = self.save_current_pos()   
         curswing, curboom, curarm, curbkt = cur_joint_angle[0], cur_joint_angle[1], cur_joint_angle[2], cur_joint_angle[3]
+        # 현재 조인트 각도에 따른 굴착기 x,z,AOA 위치
         curdist, curdept, curaoa = forwardkinematics_real(radians(curboom), radians(curarm), radians(curbkt))
         
         l1 = 6.24565
         l2 = 3.11364
         l3 = 1.910051
         
+        ### exc_phase-0 ###
+        print("exc_phase 0 : 평탄화 작업 준비 경로 생성")
+        # 대기 위치 및 이동 속도 설정
+        lineVel, camCapDist, camCapDept, camCapAOA = 1.1, 3.2, 2.2, radians(-162)
+        # 현재 위치에서 대기 위치로 이동하는 경로 생성
+        self.path_generator.lineBasicInfo(lineVel, camCapDist, camCapDept, camCapAOA)
+        cmd_data_list_0, Trajectory_0, _ = self.path_generator.linepath(curswing, curdist, curdept, curaoa)      
+        print("exc_phase 0 : 완료")
+        ### 다음 경로 생성을 위한 위치 업데이트 ###
+        self.update_start_pos(cmd_data_list_0)  
+        print("test")        
         for i in range(num_UnitWork): 
             print("평탄화 단위 작업 :",i,"번 시작")
-            
-            # 0번 작업
-            # 대기 자세
-            lineVel, camCapDist, camCapDept, camCapAOA = 1.1, 3.2, 2.2, radians(-162)
-            self.path_generator.lineBasicInfo(lineVel, camCapDist, camCapDept, camCapAOA)
-            cmd_data_list_0, Trajectory_0, _ = self.path_generator.linepath(curswing, curdist, curdept, curaoa)
-            # 1번 작업
+
+            ### exc_phase-1 ###
+            print(f"exc_phase {i}-1 : 평탄화(법면) 작업 시작을 위한 스윙 작업")
+            # 스윙속도, 목표 스윙각도 설정
             swingvel, swinggoal = 25, desired_swingAngle_list[swing_idx] # deg/s, degree
             self.path_generator.swingInfo(swingvel, swinggoal)
-            self.cmd_data_list, Trajectory, _ = self.path_generator.swingPath(curswing, curdist, curdept, curaoa)
-            # 2번 작업
+            cmd_data_list_1, Trajectory_1, _ = self.path_generator.swingPath(curswing, curdist, curdept, curaoa)
+            print(f"exc_phase {i}-1 : 완료")
+            
+            ### 현재 위치 업데이트 ###
+            self.update_start_pos(cmd_data_list_1)
+            
+            ### exc_phase-2 ###
+            print(f"exc_phase {i}-2 : 평탄화(법면) 초기 위치 이동 작업")
+            # 스윙속도, 목표 스윙각도 설정
+            swingvel, swinggoal = 25, desired_swingAngle_list[swing_idx] # deg/s, degree
+            self.path_generator.swingInfo(swingvel, swinggoal)
+            cmd_data_list_1, Trajectory_1, _ = self.path_generator.swingPath(curswing, curdist, curdept, curaoa)
+            print(f"exc_phase {i}-2 : 완료")
+            
             #...
             # 9번 작업
             # 10번 작업                        
@@ -404,7 +423,7 @@ class LEVELING():
         
         return ROS_cmd
 
-    # 가상 굴착기 정보를 위한 스레드(명령값 그래로 거동하는 것으로 가정)
+    # 가상 굴착기 정보를 위한 스레드(경로 명령값 그래로 거동하는 것으로 가정)
     def th_VirtualCAN(self):
         
         # 수식 추가
@@ -415,7 +434,7 @@ class LEVELING():
 
         self.cur_x, self.cur_z, self.cur_AA = forwardkinematics_real(radians(self.boomangle), radians(self.armangle), radians(self.bktangle))
           
-    #굴착 경로 데이터를 저장하고 상태를 업데이트 해주는 스레드 
+    # 굴착 경로 데이터를 저장하고 상태를 업데이트 해주는 스레드 
     def th_recordData(self, cond):
         while not self.stop_event.is_set():
             with cond:
@@ -459,9 +478,20 @@ class LEVELING():
             #빈 큐에서 뭐를 뽑는 것을 방지하기 위해 
             time.sleep(0.01)
 
-    # 실행되는 순간의 굴착기 조인트 각도 저장
+    # 실행되는 순간의 굴착기 조인트 각도 저장 함수(내부함수)
     def save_current_pos(self):                 
         return [self.swingangle, self.boomangle, self.armangle, self.bktangle]
+    
+    # 경로 생성을 위한 초기 위치 업데이트
+    def update_start_pos(self,cmd):
+        ### desired path 마지막 값으로 업데이트 ###
+        curswing = cmd[-1][0]
+        curboom = cmd[-1][1]
+        curarm = cmd[-1][2]
+        curbkt = cmd[-1][3]
+        
+        return curswing, curboom, curarm, curbkt
+        
 
 if __name__ == '__main__':
     AE = LEVELING()
