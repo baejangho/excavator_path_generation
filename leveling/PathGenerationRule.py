@@ -3,7 +3,7 @@ from inversekinematics_rc_real import *
 from math import *
 import numpy as np
 
-WaypointModel = tf.keras.models.load_model('Waypoint_RC_R9_230917.h5')
+# WaypointModel = tf.keras.models.load_model('Waypoint_RC_R9_230917.h5')
 
 l1=6.24565
 l2=3.11364
