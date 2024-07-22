@@ -33,9 +33,9 @@ class LEVELING():
 
         ### 데이터 로깅 관련 변수 ###
         #굴삭 기록 저장시 조인트/버켓 위치 및 aoa 경로 데이터 파일(csv) 저장되는 주소
-        self.DataRoute = './Data/record_path_leveling.csv'
-        self.logging_trg = False #데이터 로깅 트리거/ 데이터 저장
-        self.log_deque = deque() #데이터 로깅 큐
+        # self.DataRoute = './Data/record_path_leveling.csv'
+        # self.logging_trg = False #데이터 로깅 트리거/ 데이터 저장
+        # self.log_deque = deque() #데이터 로깅 큐
         
         # 가상 굴착기 정보를 위한 스레드 오픈 
         # virtual_CAN_th = threading.Thread(target=self.th_VirtualCAN,args=())          
