@@ -25,9 +25,8 @@ import PathGenerationRule as PG
 class LEVELING():
     def __init__(self):
         self.path_generator = PG.excavation_path()
-        # pos_beforeSwing = [3.2, 2.2, radians(-167)]
-        # self.path_generator.basicinput(2.9, -2.1, -2.1, -3, 9.3, pos_beforeSwing, 0.8)
-        # tresh_joint, tresh_Traj, _ = self.path_generator.pathgeneration(10)
+        # 상차 유무
+        self.isDump = True
 
         # 조인트/버켓 위치 및 aoa 경로 데이터 목록, csv 파일 저장될 시, 헤더 역할
         self.headers = ['time(s)','x(m)','y(m)','z(m)','SwingAng_cmd(Deg)','BoomAng_cmd(Deg)','ArmAng_cmd(Deg)','BktAng_cmd(Deg)'] 
@@ -39,14 +38,16 @@ class LEVELING():
         self.log_deque = deque() #데이터 로깅 큐
         
         # 가상 굴착기 정보를 위한 스레드 오픈 
-        virtual_CAN_th = threading.Thread(target=self.th_VirtualCAN,args=())          
-        virtual_CAN_th.start()
+        # virtual_CAN_th = threading.Thread(target=self.th_VirtualCAN,args=())          
+        # virtual_CAN_th.start()
         
         # 데이터 로깅 스레드 : 100ms 마다 데이터 로깅
-        record_th = threading.Thread(target=self.th_recordData,args=())     
-        record_th.start()
+        # record_th = threading.Thread(target=self.th_recordData,args=())     
+        # record_th.start()
+        
+        self.path_generation_leveling()
 
-    def path_generation_leveling(self, cond):
+    def path_generation_leveling(self):
         
         #############  평탄화(법면) 작업 단계(exc_phase : 1 - 8단계로 가정)  #######################
         # 0단계 : 현재 자세에서 대기 자세로 버켓 이동              (대기 자세 이동 작업 : 처음에만 시행)
@@ -70,14 +71,16 @@ class LEVELING():
         # 2. 스윙(상차) 자세 : 상차를 위한 스윙 전, 버켓 자세(토사를 가지고 있을 때)
         # 3. 스윙(복귀) 자세 : 복귀를 위한 스윙 전, 버켓 자세
         # 4. 마지막 작업 후 스윙은 0도로 설정
+        
+        ### 작업 예시 ###
+        # 1. 상차를 포함하고 2개의 unit work가 있는 경우
+        #  (0단계-1단계) - (2단계-3단계-4단계-5단계-6단계-7단계-8단계) - (2단계-3단계-4단계-5단계-6단계-7단계-8단계) - 9단계
+        # 2. 상차가 없고 3개의 unit work가 있는 경우
+        #  (0단계-1단계) - (2단계-3단계-4단계-8단계) - (2단계-3단계-4단계-8단계) - (2단계-3단계-4단계-8단계) - 9단계
         ######################################################################################
         
         print("PATH generator 시작!")
-        
-        # 평탄화 작업 phase에 따른 작업 순서 리스트
-        exc_phase_list = ["0","1","2","3","4","5","6","7","8","9"]
-        # 상차가 없는 경우는 아래 리스트 사용 
-        # exc_phase_list = ["0","1","2","3","4","8","9"]
+
         cur_exc_phase = ""
         cur_exc_phase = "0"
         exc_phase_idx = 0
@@ -89,14 +92,14 @@ class LEVELING():
 
         ######################### 굴착 작업 정보 획득 #########################
         # 작업명령 저장(이전 TCP/IP 통신으로 받은 프로토콜)
-        EXC_CMD = self.work_input()  
+        EXC_CMD = self.work_input() 
+        print(EXC_CMD)
         # 모든 unit(sector)에 대한 작업정보 저장 cf)트렌칭의 경우 무조건 1개
         location = EXC_CMD["location"]
         # unit(sector) work 개수 저장
         num_UnitWork = len(location)
-        # unitwork 수 만큼 스윙
-        swing_num = num_UnitWork
-        
+        print("unit work 개수 : ",num_UnitWork)
+
         location_distFar_list = []
         location_distNear_list = []
         desired_depth_list = []
@@ -131,18 +134,20 @@ class LEVELING():
         # 현재 위치에서 대기 위치로 이동하는 경로 생성
         self.path_generator.lineBasicInfo(lineVel, InitDist, InitDept, initAOA)
         cmd_data_list_0, Trajectory_0, _ = self.path_generator.linepath(curswing, curdist, curdept, curaoa)      
+        print(cmd_data_list_0)
+        print(Trajectory_0)
         print("exc_phase 0 : 완료")
         
         # 다음 경로 생성을 위한 위치 업데이트
         curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_0,Trajectory_0)
         
         ### exc_phase-1 ###
-        print(f"exc_phase {i}-1 : 평탄화(법면) 작업 시작을 위한 스윙 작업")
+        print(f"exc_phase 1 : 평탄화(법면) 작업 시작을 위한 스윙 작업")
         # 스윙속도, 목표 스윙각도 설정
         swingvel, swinggoal = 25, desired_swingAngle_list[swing_idx] # deg/s, degree
         self.path_generator.swingInfo(swingvel, swinggoal)
         cmd_data_list_1, Trajectory_1, _ = self.path_generator.swingPath(curswing, curdist, curdept, curaoa)
-        print(f"exc_phase {i}-1 : 완료")
+        print(f"exc_phase 1 : 완료")
         
         # 다음 경로 생성을 위한 위치 업데이트
         curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_1,Trajectory_1)
@@ -153,11 +158,11 @@ class LEVELING():
             ### exc_phase-2 ###
             print(f"exc_phase {i}-2 : 평탄화(법면) 초기 위치 이동 작업")
             # 평탄화(법면) 시작 위치
-            LineEndDist = round(self.location_distFar_list[(swing_idx)], 2)
-            LineEndDept = round(self.desired_depthFar_list[(swing_idx)], 2)
+            LineEndDist = round(location_distFar_list[(swing_idx)], 2)
+            LineEndDept = round(desired_depthFar_list[(swing_idx)], 2)
             # 평탄화(법면) 종료 위치
-            IncExcDist  = round(self.location_distNear_list[(swing_idx)], 2)
-            IncExcDept  = round(self.desired_depthNear_list[(swing_idx)], 2)
+            IncExcDist  = round(location_distNear_list[(swing_idx)], 2)
+            IncExcDept  = round(desired_depthNear_list[(swing_idx)], 2)
 
             ## 평탄화(법면) 작업 시작,종료 위치에서의 AOA를 설정하기 위한 알고리즘
             ## 평탄화 시작점에서 암과 버켓 링크가 일직선이 되도록 가정
@@ -219,56 +224,57 @@ class LEVELING():
             ## 다음 경로 생성을 위한 위치 업데이트
             curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_4,Trajectory_4)
             
-            ### exc_phase-5 ###
-            print(f"exc_phase {i}-5 : 상차를 위한 스윙 작업")
-            # 스윙속도, 목표 스윙각도 설정
-            swingvel, swinggoal = 25, DumpSwingAngle  # deg/s, degree
-            self.path_generator.swingInfo(swingvel, swinggoal)
-            cmd_data_list_5, Trajectory_5, _ = self.path_generator.swingPath(curswing, curdist, curdept, curaoa)
-            print(f"exc_phase {i}-5 : 완료")
-            
-            # 다음 경로 생성을 위한 위치 업데이트
-            curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_5,Trajectory_5)
-            
-            ### exc_phase-6 ###
-            print(f"exc_phase {i}-6 : 상차 위치 이동 작업")
-            # 스윙속도, 목표 스윙각도 설정(설정 필요함!!)
-            loadVel, loadDist, loadDept, loadAOA = 0.5, DumpDist, 0.5, radians(-162)
-            self.path_generator.lineBasicInfo(loadVel, loadDist, loadDept, loadAOA)
-            cmd_data_list_6, Trajectory_6, _ = self.path_generator.linepath(curswing, curdist, curdept, curaoa)
-            print(f"exc_phase {i}-6 : 완료")
-            
-            # 다음 경로 생성을 위한 위치 업데이트
-            curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_6,Trajectory_6)
-            
-            ### exc_phase-7 ###
-            print(f"exc_phase {i}-7 : 상차 작업")
-            # 상차 관련 상수 설정(설정 필요함!!)
-            load_init_dist, load_init_dept = curdist, curdept
-            load_rad, load_vel = 2.2, 0.7
-            load_final_dist = 4 + load_rad + 0.2
+            if self.isDump:
+                ### exc_phase-5 ###
+                print(f"exc_phase {i}-5 : 상차를 위한 스윙 작업")
+                # 스윙속도, 목표 스윙각도 설정
+                swingvel, swinggoal = 25, DumpSwingAngle  # deg/s, degree
+                self.path_generator.swingInfo(swingvel, swinggoal)
+                cmd_data_list_5, Trajectory_5, _ = self.path_generator.swingPath(curswing, curdist, curdept, curaoa)
+                print(f"exc_phase {i}-5 : 완료")
+                
+                # 다음 경로 생성을 위한 위치 업데이트
+                curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_5,Trajectory_5)
+                
+                ### exc_phase-6 ###
+                print(f"exc_phase {i}-6 : 상차 위치 이동 작업")
+                # 스윙속도, 목표 스윙각도 설정(설정 필요함!!)
+                loadVel, loadDist, loadDept, loadAOA = 0.5, DumpDist, 0.5, radians(-162)
+                self.path_generator.lineBasicInfo(loadVel, loadDist, loadDept, loadAOA)
+                cmd_data_list_6, Trajectory_6, _ = self.path_generator.linepath(curswing, curdist, curdept, curaoa)
+                print(f"exc_phase {i}-6 : 완료")
+                
+                # 다음 경로 생성을 위한 위치 업데이트
+                curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_6,Trajectory_6)
+                
+                ### exc_phase-7 ###
+                print(f"exc_phase {i}-7 : 상차 작업")
+                # 상차 관련 상수 설정(설정 필요함!!)
+                load_init_dist, load_init_dept = curdist, curdept
+                load_rad, load_vel = 2.2, 0.7
+                load_final_dist = 4 + load_rad + 0.2
 
-            lambda_theta = np.clip((load_final_dist ** 2 + load_init_dept ** 2 + (l2 + l3) ** 2 - l1 ** 2) / (2 * sqrt(load_final_dist ** 2 + load_init_dept ** 2) * (l2 + l3)), -1, 1)
-            load_final_aoa = atan2(load_init_dept, load_final_dist) - acos(lambda_theta) + radians(40)
+                lambda_theta = np.clip((load_final_dist ** 2 + load_init_dept ** 2 + (l2 + l3) ** 2 - l1 ** 2) / (2 * sqrt(load_final_dist ** 2 + load_init_dept ** 2) * (l2 + l3)), -1, 1)
+                load_final_aoa = atan2(load_init_dept, load_final_dist) - acos(lambda_theta) + radians(40)
 
-            self.path_generator.loading_Track_info(load_init_dist, load_init_dept, load_final_dist, load_rad, load_vel, load_final_aoa)
-            cmd_data_list_7, Trajectory_7, _ = self.path_generator.loading_Track(curswing, curdist, curdept, curaoa)
-            print(f"exc_phase {i}-7 : 완료")
-            
-            # 다음 경로 생성을 위한 위치 업데이트
-            curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_7,Trajectory_7)
-            
+                self.path_generator.loading_Track_info(load_init_dist, load_init_dept, load_final_dist, load_rad, load_vel, load_final_aoa)
+                cmd_data_list_7, Trajectory_7, _ = self.path_generator.loading_Track(curswing, curdist, curdept, curaoa)
+                print(f"exc_phase {i}-7 : 완료")
+                
+                # 다음 경로 생성을 위한 위치 업데이트
+                curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_7,Trajectory_7)
+                
             exc_phase_idx += 1
             swing_idx += 1
             
-            ## 마지막 unit work 인지 확인
-            # 마지막 unit work 인 아닌 경우
-            if exc_phase_idx < num_UnitWork:
+            ### 마지막 unit work 인지 확인 ###
+            
+            if exc_phase_idx < num_UnitWork: # 마지막 unit work가 아닌 경우
                 ### exc_phase-8 ###
                 print(f"exc_phase {i}-8 : 다음 unit work 위한 스윙 작업")
                 # 스윙속도, 목표 스윙각도 설정
                 swingvel, swinggoal = 25, desired_swingAngle_list[swing_idx] # deg/s, degree
-            else:
+            else: # 마지막 unit work 인 경우
                 print(f"exc_phase {i}-8 : 다음 작업 종료를 위한 스윙 작업")
                 # 스윙속도, 초기 스윙각도(=0) 설정(설정 필요함!!)
                 swingvel, swinggoal = 25, 0 # deg/s, degree
@@ -291,7 +297,7 @@ class LEVELING():
         # 다음 경로 생성을 위한 위치 업데이트
         curswing, curdist, curdept, curaoa = self.update_start_pos(cmd_data_list_9,Trajectory_9)
 
-    print("PATH generator 종료!")
+        print("PATH generator 종료!")
     
     # 작업 명령을 작성해주세요
     def work_input(self):    
@@ -299,7 +305,7 @@ class LEVELING():
         평탄화 경로 생성을 위한 input data 생성
         
         """
-        ROS_cmd = virtual_cmd.work_cmd_SE()
+        ROS_cmd = virtual_cmd.work_cmd_leveling()
         
         return ROS_cmd
 
@@ -315,41 +321,9 @@ class LEVELING():
         self.cur_x, self.cur_z, self.cur_AA = forwardkinematics_real(radians(self.boomangle), radians(self.armangle), radians(self.bktangle))
           
     # 굴착 경로 데이터를 저장하고 상태를 업데이트 해주는 스레드 
-    def th_recordData(self, cond):
-        while not self.stop_event.is_set():
-            with cond:
-                if self.state == 'circular':
-                    self.circular_state = True 
-                    self.trenching_state = False 
-                    self.incline_state = False 
-                    self.mountain_state = False 
-
-                elif self.state == 'trenching':
-                    self.circular_state = False 
-                    self.trenching_state = True 
-                    self.incline_state = False 
-                    self.mountain_state = False 
-
-                elif self.state == 'incline':
-                    self.circular_state = False 
-                    self.trenching_state = False
-                    self.incline_state = True 
-                    self.mountain_state = False        
-
-                elif self.state == 'mountain':
-                    self.circular_state = False 
-                    self.trenching_state = False
-                    self.incline_state = False 
-                    self.mountain_state = True  
-
-                elif self.state == 'waiting':
-                    self.circular_state = False 
-                    self.trenching_state = False
-                    self.incline_state = False 
-                    self.mountain_state = False  
-
-                cond.notify_all() 
-
+    def th_recordData(self):
+        while True:
+            
             if len(self.log_deque) > 0 and self.logging_trg:
                 pathdata = self.log_deque.pop()
                 recordInfo = pd.DataFrame(pathdata)
@@ -361,7 +335,8 @@ class LEVELING():
     # 실행되는 순간의 굴착기 조인트 각도 저장 함수(내부함수)
     def save_current_pos(self):
         # 추 후 코드에 따라 수정되거나 삭제될 수 있음                 
-        return [self.swingangle, self.boomangle, self.armangle, self.bktangle]
+        # return [self.swingangle, self.boomangle, self.armangle, self.bktangle]
+        return [10, 50, -90, -50]
     
     # 경로 생성을 위한 초기 위치 업데이트
     def update_start_pos(self,cmd,traj):
@@ -370,8 +345,7 @@ class LEVELING():
         # curboom = cmd[-1][1]
         # curarm = cmd[-1][2]
         # curbkt = cmd[-1][3]
-        
-        curswing = self.cmd_data_list[-1][0]
+
         curdist, curdept, curaoa = traj[-1][0], traj[-1][1], traj[-1][2]
         
         return curswing, curdist, curdept, curaoa
